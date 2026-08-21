@@ -4,7 +4,9 @@ INDEX_HTML = r'''<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>🕵️ 마피아 게임</title>
+<title>메시지</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2303c75a'/%3E%3Cpath d='M7 8h18a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H13l-6 5v-5a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2z' fill='white'/%3E%3C/svg%3E">
+<meta name="apple-mobile-web-app-title" content="메시지">
 <style>
   :root {
     --bg: #f5f6f8; --panel: #ffffff; --line: #e5e8eb; --soft: #f1f3f5;
@@ -55,7 +57,11 @@ INDEX_HTML = r'''<!DOCTYPE html>
     display: flex; align-items: center; gap: 12px; padding: 12px 18px;
     background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap;
   }
-  #roomTitle { font-weight: 800; font-size: 16px; }
+  #roomTitle { display: flex; align-items: center; gap: 7px; font-weight: 800; font-size: 17px; }
+  #roomTitle .logoIcon {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 27px; height: 27px; border-radius: 8px; background: var(--green);
+  }
   #phaseBadge {
     font-size: 14px; font-weight: 700; padding: 5px 13px; border-radius: 20px;
     background: var(--soft); color: var(--text);
@@ -92,20 +98,31 @@ INDEX_HTML = r'''<!DOCTYPE html>
   #roleCard .rdesc { color: #5b626b; }
   .listTitle { font-size: 12px; color: var(--dim); margin-top: 4px; font-weight: 700; }
   .pcard {
-    display: flex; align-items: center; gap: 8px; padding: 10px 12px;
-    border-radius: 12px; background: var(--panel); border: 1.5px solid var(--line);
-    font-size: 14px; font-weight: 600;
+    display: flex; align-items: center; gap: 11px; padding: 8px 10px;
+    border-radius: 12px; background: var(--panel); font-size: 15px;
   }
-  .pcard .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); flex: none; }
-  .pcard.off .dot { background: #c6ccd4; }
-  .pcard.dead { opacity: 0.4; text-decoration: line-through; background: var(--soft); }
-  .pcard.me { border-color: var(--green); background: var(--green-soft); }
-  .pcard .tag { margin-left: auto; font-size: 11px; color: var(--dim); }
+  .pcard:hover { background: var(--soft); }
+  .pcard .pav {
+    width: 42px; height: 42px; border-radius: 50%; flex: none; position: relative;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-weight: 700; font-size: 17px;
+  }
+  .pcard .pav .dot {
+    position: absolute; right: -1px; bottom: -1px; width: 12px; height: 12px;
+    border-radius: 50%; background: var(--green); border: 2px solid var(--panel);
+  }
+  .pcard.off .pav .dot { background: #c6ccd4; }
+  .pcard .pinfo { flex: 1; min-width: 0; display: flex; align-items: center; }
+  .pcard .pname { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pcard.dead { opacity: 0.45; }
+  .pcard.dead .pname { text-decoration: line-through; }
+  .pcard.me { background: var(--green-soft); box-shadow: inset 0 0 0 1.5px #bfe9d0; }
+  .pcard .tag { margin-left: auto; font-size: 11px; color: var(--dim); flex: none; }
   .pcard .tag.mate { color: var(--red); font-weight: 800; }
   .pcard.targetable { cursor: pointer; }
-  .pcard.targetable:hover { border-color: var(--red); background: var(--red-soft); }
-  .pcard.picked { border-color: var(--red); background: var(--red-soft); }
-  .pcard.picked::after { content: "🎯"; margin-left: auto; }
+  .pcard.targetable:hover { background: var(--red-soft); box-shadow: inset 0 0 0 1.5px var(--red); }
+  .pcard.picked { background: var(--red-soft); box-shadow: inset 0 0 0 1.5px var(--red); }
+  .pcard.picked::after { content: "🎯"; margin-left: auto; flex: none; }
   #skipBtn {
     padding: 10px; border-radius: 12px; border: 1.5px dashed var(--line);
     background: transparent; color: var(--dim); cursor: pointer; font-size: 13px; display: none; font-weight: 600;
@@ -113,7 +130,15 @@ INDEX_HTML = r'''<!DOCTYPE html>
   #skipBtn:hover { color: var(--text); border-color: var(--dim); }
 
   /* 오른쪽: 채팅 */
-  .chatWrap { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--bg); }
+  .chatWrap { position: relative; flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--bg); }
+  #newMsgBtn {
+    position: absolute; left: 50%; transform: translateX(-50%); bottom: 78px;
+    display: none; padding: 8px 16px; border-radius: 20px; z-index: 5;
+    background: var(--green); color: #fff; font-size: 13px; font-weight: 700;
+    cursor: pointer; box-shadow: 0 3px 10px rgba(0,0,0,0.18);
+  }
+  #newMsgBtn:hover { background: var(--green-dark); }
+  #newMsgBtn.show { display: block; }
   #log { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 16px 18px; display: flex; flex-direction: column; gap: 4px; }
 
   .mrow { display: flex; flex-direction: column; align-items: flex-start; margin: 3px 0; }
@@ -191,7 +216,7 @@ INDEX_HTML = r'''<!DOCTYPE html>
 
 <div id="gameScreen">
   <header>
-    <span id="roomTitle">🕵️ 마피아 게임</span>
+    <div id="roomTitle"><span class="logoIcon"><svg viewBox="0 0 24 24" width="16" height="16" fill="#fff" aria-hidden="true"><path d="M4 4h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H9l-5 4v-4H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/></svg></span><span>메시지</span></div>
     <span id="phaseBadge">대기실</span>
     <span id="timerBox"></span>
     <span id="hint"></span>
@@ -207,6 +232,7 @@ INDEX_HTML = r'''<!DOCTYPE html>
     </aside>
     <div class="chatWrap">
       <div id="log"></div>
+      <div id="newMsgBtn">새 메시지 ↓</div>
       <form id="chatForm">
         <input id="chatInput" maxlength="300" placeholder="메시지 입력..." autocomplete="off">
         <button id="sendBtn" type="submit">전송</button>
@@ -230,6 +256,14 @@ const ROLE_DESC = {
 };
 const ROLE_KR = { mafia: "마피아 🔪", doctor: "의사 💉", police: "경찰 🚨", citizen: "시민 👤" };
 const PHASE_KR = { lobby: "🏠 대기실", night: "🌙 밤", day_discuss: "☀️ 낮 · 토론", day_vote: "🗳️ 투표", ended: "🏁 게임 종료" };
+
+// 닉네임으로 아바타 색상 결정 (사람마다 고정 색)
+const AVATAR_COLORS = ["#f0997b", "#5dcaa5", "#85b7eb", "#b085f5", "#ed93b1", "#f0b429", "#63c2a0", "#e2787d"];
+function avatarColor(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) >>> 0;
+  return AVATAR_COLORS[h % AVATAR_COLORS.length];
+}
 
 async function api(body) {
   const r = await fetch("/api", {
@@ -339,9 +373,8 @@ function handle(ev) {
       const div = document.createElement("div");
       div.className = "sysline over " + (ev.winner === "mafia" ? "mafia-win" : "citizen-win");
       div.textContent = ev.winner === "mafia" ? "🔪 마피아의 승리!" : "🎉 시민의 승리!";
-      $("log").appendChild(div);
+      pushLog(div);
       addSys("직업 공개 — " + ev.roles.map(r => `${r.nick}: ${r.roleKr}${r.alive ? "" : " (사망)"}`).join(" / "), "big");
-      scrollLog();
       break;
     }
   }
@@ -375,21 +408,40 @@ function addChat(ev) {
   time.textContent = nowTime();
   line.append(bubble, time);
   row.appendChild(line);
-  $("log").appendChild(row);
-  scrollLog();
+  pushLog(row);
 }
 function addSys(text, cls) {
   const div = document.createElement("div");
   div.className = "sysline " + (cls || "sys");
   div.textContent = text;
-  $("log").appendChild(div);
-  scrollLog();
+  pushLog(div);
 }
-function scrollLog() {
+// 맨 아래 근처(60px 이내)에 있는지
+function nearBottom(log) {
+  return log.scrollHeight - log.scrollTop - log.clientHeight < 60;
+}
+// 새 메시지 추가: 맨 아래 근처면 따라 내려가고, 위로 올려둔 상태면 위치 유지 + '새 메시지' 버튼
+function pushLog(node) {
+  const log = $("log");
+  const stick = nearBottom(log);
+  log.appendChild(node);
+  while (log.children.length > 400) log.removeChild(log.firstChild);
+  if (stick) {
+    log.scrollTop = log.scrollHeight;
+    $("newMsgBtn").classList.remove("show");
+  } else {
+    $("newMsgBtn").classList.add("show");
+  }
+}
+function scrollLogToBottom() {
   const log = $("log");
   log.scrollTop = log.scrollHeight;
-  while (log.children.length > 400) log.removeChild(log.firstChild);
+  $("newMsgBtn").classList.remove("show");
 }
+$("newMsgBtn").onclick = scrollLogToBottom;
+$("log").addEventListener("scroll", () => {
+  if (nearBottom($("log"))) $("newMsgBtn").classList.remove("show");
+});
 
 $("chatForm").onsubmit = async e => {
   e.preventDefault();
@@ -467,10 +519,18 @@ function render() {
     if (!p.alive) card.classList.add("dead");
     if (p.pid === pid) card.classList.add("me");
 
+    const av = document.createElement("div");
+    av.className = "pav";
+    av.style.background = avatarColor(p.nick);
+    av.textContent = ([...p.nick][0] || "?");
     const dot = document.createElement("span"); dot.className = "dot";
-    const name = document.createElement("span");
+    av.appendChild(dot);
+
+    const info = document.createElement("div"); info.className = "pinfo";
+    const name = document.createElement("span"); name.className = "pname";
     name.textContent = (state.host === p.pid ? "👑 " : "") + p.nick + (p.pid === pid ? " (나)" : "");
-    card.append(dot, name);
+    info.appendChild(name);
+    card.append(av, info);
 
     if (myRole === "mafia" && myMates.includes(p.nick)) {
       const tag = document.createElement("span"); tag.className = "tag mate"; tag.textContent = "동료";
