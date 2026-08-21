@@ -42,7 +42,11 @@ INDEX_HTML = r'''<!DOCTYPE html>
     border: none; border-radius: 12px; background: var(--green); color: #fff; cursor: pointer;
   }
   #joinBtn:hover { background: var(--green-dark); }
+  #joinBtn:disabled { background: var(--soft); color: var(--dim); cursor: not-allowed; }
   #joinErr { color: var(--red); min-height: 18px; font-size: 13px; }
+  #joinNotice { display: none; width: 100%; padding: 12px 14px; border-radius: 12px;
+    background: var(--gold-soft); color: #8a6a10; font-size: 13.5px; line-height: 1.6; text-align: center; }
+  #joinNotice.show { display: block; }
 
   /* ---------- 게임 화면 ---------- */
   #gameScreen { height: 100%; display: none; flex-direction: column; }
@@ -109,8 +113,8 @@ INDEX_HTML = r'''<!DOCTYPE html>
   #skipBtn:hover { color: var(--text); border-color: var(--dim); }
 
   /* 오른쪽: 채팅 */
-  .chatWrap { flex: 1; display: flex; flex-direction: column; min-width: 0; background: var(--bg); }
-  #log { flex: 1; overflow-y: auto; padding: 16px 18px; display: flex; flex-direction: column; gap: 4px; }
+  .chatWrap { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--bg); }
+  #log { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 16px 18px; display: flex; flex-direction: column; gap: 4px; }
 
   .mrow { display: flex; flex-direction: column; align-items: flex-start; margin: 3px 0; }
   .mrow.mine { align-items: flex-end; }
@@ -177,7 +181,8 @@ INDEX_HTML = r'''<!DOCTYPE html>
 <div id="joinScreen">
   <div class="joinCard">
     <h1>🕵️ 마피아 게임</h1>
-    <p>6~8명이 함께하는 채팅 마피아<br>마피아 2 · 의사 1 · 경찰 1 · 나머지 시민</p>
+    <p>5~8명이 함께하는 채팅 마피아<br>마피아 1~2 · 의사 1 · 경찰 1 · 나머지 시민</p>
+    <div id="joinNotice"></div>
     <input id="nickInput" maxlength="12" placeholder="닉네임 입력" autocomplete="off">
     <button id="joinBtn">입장하기</button>
     <div id="joinErr"></div>
@@ -247,15 +252,51 @@ async function join() {
 $("joinBtn").onclick = join;
 $("nickInput").onkeydown = e => { if (e.key === "Enter") join(); };
 
+// 입장 화면에서 게임 진행 상태를 주기적으로 확인 → 진행 중이면 안내 + 버튼 비활성화
+let joinPoll = null;
+async function refreshJoinStatus() {
+  const notice = $("joinNotice"), btn = $("joinBtn");
+  try {
+    const s = await api({ action: "status" });
+    if (!s.ok) return;
+    if (s.inGame) {
+      notice.textContent = `🔒 지금 게임이 진행 중입니다. 이번 판이 끝나면 입장할 수 있어요. (현재 ${s.players}명 플레이 중)`;
+      notice.classList.add("show");
+      btn.disabled = true; btn.textContent = "게임 진행 중…";
+    } else if (s.ended) {
+      notice.textContent = "🔒 지난 게임 결과를 보는 중입니다. 방장이 새 판을 열면 입장할 수 있어요.";
+      notice.classList.add("show");
+      btn.disabled = true; btn.textContent = "잠시 대기…";
+    } else if (s.players >= s.max) {
+      notice.textContent = `🔒 정원이 가득 찼습니다. (${s.max}명)`;
+      notice.classList.add("show");
+      btn.disabled = true; btn.textContent = "정원 초과";
+    } else {
+      notice.classList.remove("show");
+      btn.disabled = false; btn.textContent = "입장하기";
+    }
+  } catch (_) { /* 일시적 오류 무시 */ }
+}
+function startJoinPolling() {
+  refreshJoinStatus();
+  if (joinPoll) clearInterval(joinPoll);
+  joinPoll = setInterval(refreshJoinStatus, 3000);
+}
+function stopJoinPolling() {
+  if (joinPoll) { clearInterval(joinPoll); joinPoll = null; }
+}
+
 function showJoin() {
   sessionStorage.removeItem("mafia_pid");
   pid = null; myRole = null; myMates = []; state = null;
   if (es) { es.close(); es = null; }
   $("gameScreen").style.display = "none";
   $("joinScreen").style.display = "flex";
+  startJoinPolling();
 }
 
 function connect() {
+  stopJoinPolling();
   $("joinScreen").style.display = "none";
   $("gameScreen").style.display = "flex";
   if (es) es.close();
@@ -477,9 +518,21 @@ setInterval(() => {
   box.className = s <= 10 && s > 0 ? "low" : "";
 }, 300);
 
+// 하트비트: 서버에 주기적으로 생존신호 전송 (유령 플레이어 자동 정리)
+setInterval(async () => {
+  if (!pid) return;
+  try {
+    const r = await api({ action: "ping" });
+    if (!r.ok) {  // 서버에서 내보내졌거나 서버 재시작됨 → 입장화면으로
+      addSys("서버와의 연결이 초기화되었습니다. 다시 입장해주세요.", "err");
+      showJoin();
+    }
+  } catch (_) { /* 일시적 오류는 무시 (EventSource가 재시도) */ }
+}, 7000);
+
 // 새로고침 시 자동 재입장
 (async () => {
-  if (!pid) return;
+  if (!pid) { startJoinPolling(); return; }  // 신규 방문자: 입장화면 상태 확인 시작
   try {
     const r = await api({ action: "ping" });
     if (r.ok) connect(); else showJoin();
@@ -518,11 +571,16 @@ from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
 PORT = int(os.environ.get("PORT") or os.environ.get("MAFIA_PORT") or "8000")
-MIN_PLAYERS = 6
+MIN_PLAYERS = 5
 MAX_PLAYERS = 8
 NIGHT_SECONDS = int(os.environ.get("MAFIA_NIGHT_SECONDS", "60"))
 DISCUSS_SECONDS = int(os.environ.get("MAFIA_DISCUSS_SECONDS", "120"))
 VOTE_SECONDS = int(os.environ.get("MAFIA_VOTE_SECONDS", "40"))
+
+# 하트비트 기반 유령 플레이어 정리
+HEARTBEAT_OFFLINE = int(os.environ.get("MAFIA_OFFLINE_SECONDS", "20"))  # 생존신호 끊긴 뒤 '접속 끊김'(회색) 표시
+HEARTBEAT_REMOVE = int(os.environ.get("MAFIA_REMOVE_SECONDS", "40"))    # 로비에서 이만큼 끊기면 자동 퇴장
+REAP_INTERVAL = 5        # 초: 정리 주기
 
 ROLE_KR = {"mafia": "마피아", "doctor": "의사", "police": "경찰", "citizen": "시민"}
 ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -536,6 +594,7 @@ class Player:
         self.alive = True
         self.connected = True
         self.gen = 0            # SSE 재접속 세대 번호
+        self.last_seen = time.time()  # 마지막 생존신호 시각
         self.q = queue.Queue()
 
 
@@ -652,13 +711,36 @@ class Game:
         self.push_state()
         return {"ok": True, "pid": p.pid}
 
-    def remove_if_gone(self, pid, gen):
-        """로비에서 연결이 끊긴 채 10초가 지나면 퇴장 처리."""
+    def touch(self, pid):
+        """생존신호 수신 — 마지막 활동 시각 갱신."""
         p = self.players.get(pid)
-        if p and not p.connected and p.gen == gen and self.phase == "lobby":
-            del self.players[pid]
-            self.order.remove(pid)
-            self.sysmsg(f"🚪 {p.nick}님이 나갔습니다. (현재 {len(self.players)}명)")
+        if p:
+            p.last_seen = time.time()
+
+    def reap(self):
+        """생존신호가 끊긴 플레이어를 정리한다. (주기적으로 호출)
+        - 접속 끊김(회색) 표시: HEARTBEAT_OFFLINE 초 초과
+        - 로비에서 자동 퇴장: HEARTBEAT_REMOVE 초 초과
+        - 게임 진행 중에는 명단에서 제거하지 않고 '끊김'만 표시(재접속 대비)"""
+        now = time.time()
+        removed = []
+        changed = False
+        for pid in list(self.order):
+            p = self.players.get(pid)
+            if not p:
+                continue
+            idle = now - p.last_seen
+            if self.phase == "lobby" and idle > HEARTBEAT_REMOVE:
+                del self.players[pid]
+                self.order.remove(pid)
+                removed.append(p.nick)
+                changed = True
+            elif p.connected and idle > HEARTBEAT_OFFLINE:
+                p.connected = False
+                changed = True
+        for nick in removed:
+            self.sysmsg(f"🚪 {nick}님이 나갔습니다. (현재 {len(self.players)}명)")
+        if changed:
             self.push_state()
 
     # ---------- 게임 시작 ----------
@@ -673,7 +755,9 @@ class Game:
 
         pids = list(self.players.keys())
         random.shuffle(pids)
-        roles = ["mafia", "mafia", "doctor", "police"] + ["citizen"] * (n - 4)
+        mafia_count = 1 if n < 6 else 2   # 5명이면 마피아 1, 6명 이상이면 마피아 2
+        citizen_count = n - mafia_count - 2
+        roles = ["mafia"] * mafia_count + ["doctor", "police"] + ["citizen"] * citizen_count
         for pid_, role in zip(pids, roles):
             self.players[pid_].role = role
         for p in self.players.values():
@@ -681,7 +765,7 @@ class Game:
             self.send(p, self.role_ev(p))
 
         self.day = 0
-        self.sysmsg(f"🎮 게임 시작! 참가자 {n}명 — 마피아 2, 의사 1, 경찰 1, 시민 {n - 4}", "big")
+        self.sysmsg(f"🎮 게임 시작! 참가자 {n}명 — 마피아 {mafia_count}, 의사 1, 경찰 1, 시민 {citizen_count}", "big")
         self.start_night()
         return {"ok": True}
 
@@ -938,6 +1022,7 @@ class Handler(BaseHTTPRequestHandler):
             p.q = queue.Queue()
             was_disconnected = not p.connected
             p.connected = True
+            p.last_seen = time.time()
             game.snapshot_for(p)
             if was_disconnected:
                 game.push_state()
@@ -964,10 +1049,6 @@ class Handler(BaseHTTPRequestHandler):
                 if p.gen == gen:
                     p.connected = False
                     game.push_state()
-                    if game.phase == "lobby":
-                        t = threading.Timer(10, lambda: _prune(pid, gen))
-                        t.daemon = True
-                        t.start()
 
     def do_POST(self):
         if urlparse(self.path).path != "/api":
@@ -983,8 +1064,14 @@ class Handler(BaseHTTPRequestHandler):
         action = data.get("action")
         pid = data.get("pid", "")
         with game.lock:
+            game.touch(pid)
             if action == "join":
                 res = game.join(data.get("nick"))
+            elif action == "status":
+                res = {"ok": True, "phase": game.phase,
+                       "inGame": game.phase not in ("lobby", "ended"),
+                       "ended": game.phase == "ended",
+                       "players": len(game.players), "max": MAX_PLAYERS}
             elif action == "ping":
                 res = {"ok": pid in game.players}
             elif action == "start":
@@ -1002,9 +1089,12 @@ class Handler(BaseHTTPRequestHandler):
         self._json(res)
 
 
-def _prune(pid, gen):
-    with game.lock:
-        game.remove_if_gone(pid, gen)
+def reaper_loop():
+    """생존신호가 끊긴 플레이어를 주기적으로 정리하는 백그라운드 스레드."""
+    while True:
+        time.sleep(REAP_INTERVAL)
+        with game.lock:
+            game.reap()
 
 
 def lan_ip():
@@ -1025,6 +1115,7 @@ def main():
         pass
     server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
     server.daemon_threads = True
+    threading.Thread(target=reaper_loop, daemon=True).start()
     print("=" * 52)
     print("  🕵️  마피아 게임 서버가 시작되었습니다!")
     print("=" * 52)
