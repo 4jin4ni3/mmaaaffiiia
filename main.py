@@ -205,8 +205,6 @@ INDEX_HTML = r'''<!DOCTYPE html>
 
 <div id="joinScreen">
   <div class="joinCard">
-    <h1>🕵️ 마피아 게임</h1>
-    <p>5~8명이 함께하는 채팅 마피아<br>마피아 1~2 · 의사 1 · 경찰 1 · 나머지 시민</p>
     <div id="joinNotice"></div>
     <input id="nickInput" maxlength="12" placeholder="닉네임 입력" autocomplete="off">
     <button id="joinBtn">입장하기</button>
